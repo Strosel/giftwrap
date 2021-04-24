@@ -1,9 +1,9 @@
-use giftwrap::Wrap;
+use giftwrap::*;
 
-#[derive(Debug, Wrap)]
+#[derive(Debug, Wrap, Unwrap)]
 pub struct MyStruct(i64);
 
-#[derive(Debug, Wrap)]
+#[derive(Debug, Wrap, Unwrap)]
 pub struct MyNamedStruct {
     f: i64,
 }
