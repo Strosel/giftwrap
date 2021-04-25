@@ -4,7 +4,7 @@ use {
     quote::{quote, quote_spanned},
     std::collections::HashSet,
     syn,
-    syn::{punctuated::Punctuated, spanned::Spanned, token},
+    syn::spanned::Spanned,
 };
 
 macro_rules! cannot_wrap {
