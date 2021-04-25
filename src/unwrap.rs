@@ -1,6 +1,8 @@
 use {
+    crate::{get_field, GetFieldError},
     proc_macro::TokenStream,
     quote::{quote, quote_spanned},
+    std::collections::{HashMap, HashSet},
     syn,
     syn::{punctuated::Punctuated, spanned::Spanned, token},
 };
@@ -41,7 +43,7 @@ pub(crate) fn derive_unwrap_struct(name: &syn::Ident, data: &syn::DataStruct) ->
             },
         };
         return quote! {
-            impl From<#name> for #ty {
+            impl std::convert::From<#name> for #ty {
                 fn from(f: #name) -> Self {
                     #from_self
                 }
@@ -49,4 +51,86 @@ pub(crate) fn derive_unwrap_struct(name: &syn::Ident, data: &syn::DataStruct) ->
         }
         .into();
     }
+}
+
+struct Variant<'a> {
+    var: &'a syn::Variant,
+    field: &'a syn::Field,
+}
+
+pub(crate) fn derive_unwrap_enum(name: &syn::Ident, data: &syn::DataEnum) -> TokenStream {
+    let mut wraps: HashMap<&syn::Type, Vec<Variant>> = HashMap::new();
+    let mut all_variants: HashSet<&syn::Variant> = HashSet::new();
+    let mut stream = TokenStream::new();
+
+    for var in data.variants.iter() {
+        all_variants.insert(var);
+        let mut no_unwrap = false;
+
+        for attr in var.attrs.iter() {
+            if attr.path.is_ident("noUnwrap") {
+                no_unwrap = true;
+            }
+        }
+
+        if !no_unwrap {
+            match get_field(&var.fields) {
+                Err(GetFieldError::Unit) => {
+                    return cannot_unwrap!(var.span() => for "Unit variant").into();
+                }
+                Err(GetFieldError::NotSingle(span)) => {
+                    return cannot_unwrap!(span => only "variant with 1 field").into();
+                }
+                Ok(field) => {
+                    let ty: &syn::Type = &field.ty;
+                    match wraps.get_mut(ty) {
+                        Some(v) => {
+                            v.push(Variant { var, field });
+                        }
+                        None => {
+                            wraps.insert(ty, vec![Variant { var, field }]);
+                        }
+                    }
+                }
+            }
+        }
+    }
+    for (ty, vars) in wraps.iter() {
+        let mut match_arms = Vec::new();
+        for var in vars.iter() {
+            let varname = &var.var.ident;
+            match_arms.push(match &var.field.ident {
+                Some(ident) => quote! {
+                    #name::#varname{ #ident } => Ok(#ident),
+                },
+                None => quote! {
+                    #name::#varname(v) => Ok(v),
+                },
+            })
+        }
+        let err_arms: Vec<_> = all_variants.difference(&vars.iter().map(|var| var.var).collect()).map(|var| {
+            let ident = &var.ident;
+            match var.fields {
+                syn::Fields::Named(_) => quote! {#name::#ident{..} => Err(concat!("Can't convert ", stringify!(#name), "::", stringify!(#ident), " into ", stringify!(#ty))),},
+                syn::Fields::Unnamed(_) => quote! {#name::#ident(..) => Err(concat!("Can't convert ", stringify!(#name), "::", stringify!(#ident), " into ", stringify!(#ty))),},
+                syn::Fields::Unit => quote! {#name::#ident => Err(concat!("Can't convert ", stringify!(#name), "::", stringify!(#ident), " into ", stringify!(#ty))),},
+            }
+        }).collect();
+        stream.extend::<TokenStream>(
+            quote! {
+                impl std::convert::TryFrom<#name> for #ty {
+                    type Error = &'static str;
+
+                    fn try_from(f: #name) -> std::result::Result<Self, Self::Error> {
+                        match f {
+                            #(#match_arms)*
+                            #(#err_arms)*
+                        }
+                    }
+                }
+            }
+            .into(),
+        );
+    }
+    stream
 }
