@@ -3,6 +3,10 @@ name = "giftwrap"
 version = "0.1.0"
 authors = ["axel paulander <axel.paulander@gmail.com>"]
 edition = "2018"
+description = "Wrap and unwrap your types the stylish way"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/strosel/giftwrap"
+readme = "readme.md"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 [lib]
