@@ -1,4 +1,4 @@
-# Giftwrap
+# Giftwrap [![Crates](https://img.shields.io/badge/crates.io-giftwrap-brightgreen.svg)](https://crates.io/crates/giftwrap)
 Wrap and unwrap your types the stylish way with derive macros for From/TryFrom in both directions
 
 ## How does it work?
