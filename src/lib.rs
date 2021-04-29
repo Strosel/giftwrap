@@ -8,6 +8,33 @@ mod wrap;
 #[macro_use]
 mod unwrap;
 
+/// Derve macro for `From<T>` where `T` is the inner type(s) of your struct or enum.
+///
+/// Any enum variant annotated with `#[noWrap]` will be ignored.
+///
+/// # Example
+/// ```
+/// #[derive(Wrap)]
+/// enum SomeEnum {
+///     Number(i64),
+///     Text(String),
+///     #[noWrap]
+///     Real(f64),
+/// }
+///
+/// //would generate
+/// impl From<i64> for SomeEnum {
+///     fn from(f: i64) -> Self {
+///         SomeEnum::Number(f)
+///     }
+/// }
+///
+/// impl From<String> for SomeEnum {
+///     fn from(f: String) -> Self {
+///         SomeEnum::Text(f)
+///     }
+/// }
+/// ```
 #[proc_macro_derive(Wrap, attributes(noWrap))]
 pub fn derive_wrap(input: TokenStream) -> TokenStream {
     let ast: syn::DeriveInput = syn::parse(input).unwrap();
@@ -20,6 +47,43 @@ pub fn derive_wrap(input: TokenStream) -> TokenStream {
     }
 }
 
+/// Derve macro for `impl From<S> for T` and `impl TryFrom<E> for T` for structs (`S`) and enums (`E`) where `T` is the inner type(s).
+///
+/// Any enum variant annotated with `#[noUnwrap]` will be ignored.
+///
+/// # Example
+/// ```
+/// #[derive(Unwrap)]
+/// enum SomeEnum {
+///     Number(i64),
+///     Text(String),
+///     #[noUnwrap]
+///     Real(f64),
+/// }
+///
+/// //would generate
+/// impl TryFrom<SomeEnum> for i64 {
+///     type Error = &'static str;
+///
+///     fn from(f: SomeEnum) -> Self {
+///         match f {
+///             SomeEnum::Number(v) => v,
+///             SomeEnum::Text(_) => "Cannot convert SomeEnum::Text into i64",
+///             //...
+///     }
+/// }
+///
+/// impl TryFrom<SomeEnum> for String {
+///     type Error = &'static str;
+///
+///     fn from(f: SomeEnum) -> Self {
+///         match f {
+///             SomeEnum::Text(v) => v,
+///             SomeEnum::Number(_) => "Cannot convert SomeEnum::Number into String",
+///             //...
+///     }
+/// }
+/// ```
 #[proc_macro_derive(Unwrap, attributes(noUnwrap))]
 pub fn derive_unwrap(input: TokenStream) -> TokenStream {
     let ast: syn::DeriveInput = syn::parse(input).unwrap();
