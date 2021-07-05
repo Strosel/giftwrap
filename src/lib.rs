@@ -41,8 +41,8 @@ pub fn derive_wrap(input: TokenStream) -> TokenStream {
 
     let name = &ast.ident;
     match &ast.data {
-        syn::Data::Struct(s) => wrap::derive_wrap_struct(name, s),
-        syn::Data::Enum(e) => wrap::derive_wrap_enum(name, e),
+        syn::Data::Struct(s) => wrap::derive_wrap_struct(name, s, ast.generics),
+        syn::Data::Enum(e) => wrap::derive_wrap_enum(name, e, ast.generics),
         syn::Data::Union(u) => cannot_wrap!(u.union_token.span => for "Union").into(),
     }
 }
@@ -90,8 +90,8 @@ pub fn derive_unwrap(input: TokenStream) -> TokenStream {
 
     let name = &ast.ident;
     match &ast.data {
-        syn::Data::Struct(s) => unwrap::derive_unwrap_struct(name, s),
-        syn::Data::Enum(e) => unwrap::derive_unwrap_enum(name, e),
+        syn::Data::Struct(s) => unwrap::derive_unwrap_struct(name, s, ast.generics),
+        syn::Data::Enum(e) => unwrap::derive_unwrap_enum(name, e, ast.generics),
         syn::Data::Union(u) => cannot_unwrap!(u.union_token.span => for "Union").into(),
     }
 }

@@ -25,7 +25,11 @@ macro_rules! cannot_wrap {
     };
 }
 
-pub(crate) fn derive_wrap_struct(name: &syn::Ident, data: &syn::DataStruct) -> TokenStream {
+pub(crate) fn derive_wrap_struct(
+    name: &syn::Ident,
+    data: &syn::DataStruct,
+    generics: syn::Generics,
+) -> TokenStream {
     match get_field(&data.fields) {
         Err(GetFieldError::Unit) => cannot_wrap!(name.span() => for "Unit struct").into(),
         Err(GetFieldError::NotSingle(span)) => {
@@ -41,8 +45,9 @@ pub(crate) fn derive_wrap_struct(name: &syn::Ident, data: &syn::DataStruct) -> T
                     Self(f)
                 },
             };
+            let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
             return quote! {
-                impl std::convert::From<#ty> for #name {
+                impl #impl_generics std::convert::From<#ty> for #name #ty_generics #where_clause {
                     fn from(f: #ty) -> Self {
                         #from_ty
                     }
@@ -53,7 +58,11 @@ pub(crate) fn derive_wrap_struct(name: &syn::Ident, data: &syn::DataStruct) -> T
     }
 }
 
-pub(crate) fn derive_wrap_enum(name: &syn::Ident, data: &syn::DataEnum) -> TokenStream {
+pub(crate) fn derive_wrap_enum(
+    name: &syn::Ident,
+    data: &syn::DataEnum,
+    generics: syn::Generics,
+) -> TokenStream {
     let mut wraps: HashSet<&syn::Type> = HashSet::new();
     let mut stream = TokenStream::new();
 
@@ -86,9 +95,10 @@ pub(crate) fn derive_wrap_enum(name: &syn::Ident, data: &syn::DataEnum) -> Token
                                 Self::#varname(f)
                             },
                         };
+                        let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
                         stream.extend::<TokenStream>(
                             quote! {
-                                impl std::convert::From<#ty> for #name {
+                                impl #impl_generics std::convert::From<#ty> for #name #ty_generics #where_clause {
                                     fn from(f: #ty) -> Self {
                                         #from_ty
                                     }

@@ -20,7 +20,11 @@ macro_rules! cannot_unwrap {
     };
 }
 
-pub(crate) fn derive_unwrap_struct(name: &syn::Ident, data: &syn::DataStruct) -> TokenStream {
+pub(crate) fn derive_unwrap_struct(
+    name: &syn::Ident,
+    data: &syn::DataStruct,
+    generics: syn::Generics,
+) -> TokenStream {
     let (fields, err_span): (&Punctuated<syn::Field, token::Comma>, proc_macro2::Span) =
         match &data.fields {
             syn::Fields::Named(f) => (&f.named, f.brace_token.span),
@@ -42,9 +46,10 @@ pub(crate) fn derive_unwrap_struct(name: &syn::Ident, data: &syn::DataStruct) ->
                 f.0
             },
         };
+        let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
         return quote! {
-            impl std::convert::From<#name> for #ty {
-                fn from(f: #name) -> Self {
+            impl #impl_generics std::convert::From<#name #ty_generics> for #ty #where_clause {
+                fn from(f: #name #ty_generics) -> Self {
                     #from_self
                 }
             }
@@ -58,7 +63,11 @@ struct Variant<'a> {
     field: &'a syn::Field,
 }
 
-pub(crate) fn derive_unwrap_enum(name: &syn::Ident, data: &syn::DataEnum) -> TokenStream {
+pub(crate) fn derive_unwrap_enum(
+    name: &syn::Ident,
+    data: &syn::DataEnum,
+    generics: syn::Generics,
+) -> TokenStream {
     let mut wraps: HashMap<&syn::Type, Vec<Variant>> = HashMap::new();
     let mut all_variants: HashSet<&syn::Variant> = HashSet::new();
     let mut stream = TokenStream::new();
@@ -116,12 +125,13 @@ pub(crate) fn derive_unwrap_enum(name: &syn::Ident, data: &syn::DataEnum) -> Tok
                 syn::Fields::Unit => quote! {#name::#ident => Err(concat!("Can't convert ", stringify!(#name), "::", stringify!(#ident), " into ", stringify!(#ty))),},
             }
         }).collect();
+        let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
         stream.extend::<TokenStream>(
             quote! {
-                impl std::convert::TryFrom<#name> for #ty {
+                impl #impl_generics  std::convert::TryFrom<#name #ty_generics> for #ty #where_clause {
                     type Error = &'static str;
 
-                    fn try_from(f: #name) -> std::result::Result<Self, Self::Error> {
+                    fn try_from(f: #name #ty_generics) -> std::result::Result<Self, Self::Error> {
                         match f {
                             #(#match_arms)*
                             #(#err_arms)*

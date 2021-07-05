@@ -1,7 +1,7 @@
 use giftwrap::*;
 
 #[derive(Debug, Wrap, Unwrap)]
-pub struct MyStruct(i64);
+pub struct MyStruct<'a, T>(Option<&'a T>);
 
 #[derive(Debug, Wrap, Unwrap)]
 pub struct MyNamedStruct {
@@ -9,8 +9,11 @@ pub struct MyNamedStruct {
 }
 
 fn main() {
-    println!("{:?}", MyStruct::from(12));
-    println!("{:?}", i64::from(MyStruct(12)));
+    println!("{:?}", MyStruct::<i64>::from(Some(&12)));
+    println!(
+        "{:?}",
+        Option::<&'_ i64>::from(MyStruct::<'_, i64>(Some(&12)))
+    );
 
     println!("{:?}", MyNamedStruct::from(-23));
     println!("{:?}", i64::from(MyNamedStruct { f: -23 }));
