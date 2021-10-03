@@ -30,30 +30,104 @@ pub(crate) fn derive_wrap_struct(
     data: &syn::DataStruct,
     generics: syn::Generics,
 ) -> TokenStream {
+    let mut stream = TokenStream::new();
+    let generic_idents: HashSet<_> = generics
+        .params
+        .iter()
+        .filter_map(|p| match p {
+            GenericParam::Type(t) => Some(t.ident.to_string()),
+            _ => None,
+        })
+        .collect();
+
     match get_field(&data.fields) {
         Err(GetFieldError::Unit) => cannot_wrap!(name.span() => for "Unit struct").into(),
         Err(GetFieldError::NotSingle(span)) => {
             cannot_wrap!(span => only "struct with 1 field").into()
         }
         Ok(field) => {
-            let ty: &syn::Type = &field.ty;
-            let from_ty = match &field.ident {
-                Some(ident) => quote! {
-                    Self{ #ident: f }
-                },
-                None => quote! {
-                    Self(f)
-                },
+            let wrap_depth = if let Some(attr) = field
+                .attrs
+                .iter()
+                .find(|&a| (*a).path.is_ident("wrapDepth"))
+            {
+                match attr
+                    .parse_args::<LitInt>()
+                    .and_then(|l| l.base10_parse::<u32>())
+                {
+                    Ok(v) => v,
+                    Err(e) => {
+                        return quote_spanned! {
+                            e.span() => compile_error!("wrapDepth must be an unsigned integer" );
+                        }
+                        .into();
+                    }
+                }
+            } else {
+                1
             };
-            let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
-            return quote! {
+
+            let types = subtypes_list(
+                &field.ty,
+                match wrap_depth {
+                    0 => None,
+                    n => Some(n),
+                },
+            );
+
+            if types.len() > 1
+                && types
+                    .iter()
+                    .filter_map(|ty| {
+                        if let Type::Path(p) = ty {
+                            Some(p.path.segments[0].ident.to_string())
+                        } else {
+                            None
+                        }
+                    })
+                    .any(|ident| generic_idents.contains(&ident))
+            {
+                return cannot_wrap!(data.fields.span() => "Generic type cannot be wrapped without causing conflicting implementations\n\tConsider using #[noWrap] or #[wrapDepth] here").into();
+            }
+
+            for (i, ty) in types.iter().enumerate() {
+                let mut froms = quote! {f};
+                if i != 0 {
+                    froms = types[..i]
+                        .iter()
+                        .rev()
+                        .filter_map(|s_ty| {
+                            if let Type::Path(p) = s_ty {
+                                Some(p.path.segments[0].ident.clone())
+                            } else {
+                                None
+                            }
+                        })
+                        .fold(froms, |froms, gen| {
+                            quote! {
+                                #gen::<_>::from(#froms)
+                            }
+                        })
+                }
+                let from_ty = match &field.ident {
+                    Some(ident) => quote! {
+                        Self{ #ident: #froms }
+                    },
+                    None => quote! {
+                        Self(#froms)
+                    },
+                };
+                let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
+                stream.extend::<TokenStream>( quote! {
                 impl #impl_generics std::convert::From<#ty> for #name #ty_generics #where_clause {
                     fn from(f: #ty) -> Self {
                         #from_ty
                     }
                 }
             }
-            .into();
+            .into());
+            }
+            stream
         }
     }
 }
@@ -132,7 +206,6 @@ pub(crate) fn derive_wrap_enum(
 
                     for (i, ty) in types.iter().enumerate() {
                         if wraps.insert(ty.clone()) {
-                            //TODO catch when some generic covers other impls
                             let mut froms = quote! {f};
                             if i != 0 {
                                 froms = types[..i]
