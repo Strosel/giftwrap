@@ -25,14 +25,25 @@ pub enum Error {
     Io(std::io::Error),
     RppalGpio(rppal::gpio::Error),
     Reqwest(reqwest::Error),
-    Qr(qrcodegen::DataTooLong),
+    Qr(Box<qrcodegen::DataTooLong>),
     Other(String),
 }
 
 impl_from!(Error::Io, std::io::Error);
 impl_from!(Error::RppalGpio, rppal::gpio::Error);
 impl_from!(Error::Reqwest, reqwest::Error);
-impl_from!(Error::Qr, qrcodegen::DataTooLong);
+
+impl From<qrcodegen::DataTooLong> for Error {
+    fn from(f: qrcodegen::DataTooLong) -> Self {
+        Error::Qr(f.into())
+    }
+}
+
+impl From<Box<qrcodegen::DataTooLong>> for Error {
+    fn from(f: Box<qrcodegen::DataTooLong>) -> Self {
+        Error::Qr(f)
+    }
+}
 ```
 This might seem simple enough but adding new error types is not as easy as it could be.
 
@@ -46,13 +57,11 @@ pub enum Error {
     Io(std::io::Error),
     RppalGpio(rppal::gpio::Error),
     Reqwest(reqwest::Error),
-    Qr(qrcodegen::DataTooLong),
+    #[wrapDepth(0)]
+    Qr(<qrcodegen::DataTooLong>),
     #[noWrap]
     Other(String),
 }
 ```
 Now you could add a new error variant wrapping a type from any library and `Giftwrap` handles the rest for you
 
-## Todo
-`Giftwrap` does not yet support:
-- [ ] Generics / Lifetimes

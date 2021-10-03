@@ -10,6 +10,10 @@ mod unwrap;
 
 /// Derve macro for `From<T>` where `T` is the inner type(s) of your struct or enum.
 ///
+/// Using `#[wrapDepth(n)]` `From` is derived for every type in the chain, which is useful for
+/// types such as `Box<T>` and `Arc<Mutex<T>>`. Setting wrapDepth to 0 will derive for all inner
+/// types. Default depth is 1.
+///
 /// Any enum variant annotated with `#[noWrap]` will be ignored.
 ///
 /// # Example
@@ -18,6 +22,8 @@ mod unwrap;
 /// enum SomeEnum {
 ///     Number(i64),
 ///     Text(String),
+///     #[wrapDepth(0)]
+///     DeepVariant(Arc<Mutex<bool>>)
 ///     #[noWrap]
 ///     Real(f64),
 /// }
@@ -32,6 +38,24 @@ mod unwrap;
 /// impl From<String> for SomeEnum {
 ///     fn from(f: String) -> Self {
 ///         SomeEnum::Text(f)
+///     }
+/// }
+///
+/// impl From<Arc<Mutex<bool>>> for SomeEnum {
+///     fn from(f: Arc<Mutex<bool>>) -> Self {
+///         SomeEnum::DeepVariant(f)
+///     }
+/// }
+///
+/// impl From<Mutex<bool>> for SomeEnum {
+///     fn from(f: Mutex<bool>) -> Self {
+///         SomeEnum::DeepVariant(Arc::<_>::from(f))
+///     }
+/// }
+///
+/// impl From<bool> for SomeEnum {
+///     fn from(f: bool) -> Self {
+///         SomeEnum::DeepVariant(Arc::<_>::from(Mutex::<_>::from(f)))
 ///     }
 /// }
 /// ```
