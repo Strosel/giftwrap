@@ -1,5 +1,6 @@
 use {
     crate::{get_field, subtypes_list, GetFieldError},
+    helpers::get_wrap_depth,
     proc_macro::TokenStream,
     quote::{quote, quote_spanned},
     std::collections::HashSet,
@@ -7,23 +8,8 @@ use {
     syn::{spanned::Spanned, GenericParam, LitInt, Type},
 };
 
-macro_rules! cannot_wrap {
-    ($span:expr => for $name:expr) => {
-        quote_spanned! {
-            $span => compile_error!(concat!("Wrap cannot be derived for ", $name));
-        }
-    };
-    ($span:expr => only $name:expr) => {
-        quote_spanned! {
-            $span => compile_error!(concat!("Wrap can only be derived for ", $name));
-        }
-    };
-    ($span:expr => $msg:expr) => {
-        quote_spanned! {
-            $span => compile_error!($msg);
-        }
-    };
-}
+#[macro_use]
+mod helpers;
 
 pub(crate) fn derive_wrap_struct(
     name: &syn::Ident,
@@ -46,25 +32,9 @@ pub(crate) fn derive_wrap_struct(
             cannot_wrap!(span => only "struct with 1 field").into()
         }
         Ok(field) => {
-            let wrap_depth = if let Some(attr) = field
-                .attrs
-                .iter()
-                .find(|&a| (*a).path.is_ident("wrapDepth"))
-            {
-                match attr
-                    .parse_args::<LitInt>()
-                    .and_then(|l| l.base10_parse::<u32>())
-                {
-                    Ok(v) => v,
-                    Err(e) => {
-                        return quote_spanned! {
-                            e.span() => compile_error!("wrapDepth must be an unsigned integer" );
-                        }
-                        .into();
-                    }
-                }
-            } else {
-                1
+            let wrap_depth = match get_wrap_depth(&field.attrs) {
+                Ok(v) => v,
+                Err(e) => return e,
             };
 
             let types = subtypes_list(
@@ -152,24 +122,14 @@ pub(crate) fn derive_wrap_enum(
 
     for var in data.variants.iter() {
         let mut no_wrap = false;
-        let mut wrap_depth: u32 = 1;
+        let wrap_depth = match get_wrap_depth(&var.attrs) {
+            Ok(v) => v,
+            Err(e) => return e,
+        };
 
         for attr in var.attrs.iter() {
             if attr.path.is_ident("noWrap") {
                 no_wrap = true;
-            } else if attr.path.is_ident("wrapDepth") {
-                match attr
-                    .parse_args::<LitInt>()
-                    .and_then(|l| l.base10_parse::<u32>())
-                {
-                    Ok(v) => wrap_depth = v,
-                    Err(e) => {
-                        return quote_spanned! {
-                            e.span() => compile_error!("wrapDepth must be an unsigned integer" );
-                        }
-                        .into();
-                    }
-                }
             }
         }
 
