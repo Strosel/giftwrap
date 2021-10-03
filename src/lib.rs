@@ -1,7 +1,7 @@
 extern crate proc_macro;
 use proc_macro::TokenStream;
 use quote::quote_spanned;
-use syn;
+use syn::{self, GenericArgument, PathArguments, Type};
 
 #[macro_use]
 mod wrap;
@@ -35,7 +35,7 @@ mod unwrap;
 ///     }
 /// }
 /// ```
-#[proc_macro_derive(Wrap, attributes(noWrap))]
+#[proc_macro_derive(Wrap, attributes(noWrap, wrapDepth))]
 pub fn derive_wrap(input: TokenStream) -> TokenStream {
     let ast: syn::DeriveInput = syn::parse(input).unwrap();
 
@@ -119,4 +119,38 @@ pub(crate) fn get_field(fields: &syn::Fields) -> Result<&syn::Field, GetFieldErr
         }
         syn::Fields::Unit => Err(GetFieldError::Unit),
     }
+}
+
+pub(crate) fn subtypes_list(top: &syn::Type, depth: Option<u32>) -> Vec<syn::Type> {
+    let mut vec = vec![];
+
+    let mut current = top;
+    while let Type::Path(path) = current {
+        if depth.map_or(false, |d| vec.len() == d as usize) {
+            break;
+        }
+        vec.push(current.clone());
+        if let PathArguments::AngleBracketed(brac) = &path.path.segments[0].arguments {
+            if let Some(next_ty) = brac
+                .args
+                .iter()
+                .filter_map(|v| {
+                    if let GenericArgument::Type(ty) = v {
+                        Some(ty)
+                    } else {
+                        None
+                    }
+                })
+                .next()
+            {
+                current = next_ty
+            } else {
+                break;
+            }
+        } else {
+            break;
+        }
+    }
+
+    vec
 }
