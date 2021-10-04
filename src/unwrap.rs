@@ -3,7 +3,6 @@ use {
     proc_macro::TokenStream,
     quote::{quote, quote_spanned},
     std::collections::{HashMap, HashSet},
-    syn,
     syn::{punctuated::Punctuated, spanned::Spanned, token},
 };
 
@@ -33,6 +32,7 @@ pub(crate) fn derive_unwrap_struct(
                 return cannot_unwrap!(name.span() => for "Unit struct").into();
             }
         };
+
     if fields.len() != 1 {
         cannot_unwrap!(err_span => only "struct with 1 field").into()
     } else {
@@ -47,14 +47,14 @@ pub(crate) fn derive_unwrap_struct(
             },
         };
         let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
-        return quote! {
+        (quote! {
             impl #impl_generics std::convert::From<#name #ty_generics> for #ty #where_clause {
                 fn from(f: #name #ty_generics) -> Self {
                     #from_self
                 }
             }
-        }
-        .into();
+        })
+        .into()
     }
 }
 

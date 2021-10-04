@@ -142,7 +142,7 @@ pub(crate) fn derive_wrap_enum(
                             }
                         })
                         .any(|ident| generic_idents.contains(&ident));
-                    if generic_wrap && wraps.len() != 0 {
+                    if generic_wrap && !wraps.is_empty() {
                         return cannot_wrap!(var.fields.span() => "Generic type cannot be wrapped without causing conflicting implementations\n\tConsider using #[noWrap] or #[wrapDepth] here").into();
                     }
 
