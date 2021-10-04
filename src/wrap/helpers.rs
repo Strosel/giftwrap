@@ -21,7 +21,7 @@ macro_rules! cannot_wrap {
     };
 }
 
-pub(super) fn get_wrap_depth(attrs: &Vec<Attribute>) -> Result<u32, proc_macro::TokenStream> {
+pub(super) fn get_wrap_depth(attrs: &[Attribute]) -> Result<u32, proc_macro::TokenStream> {
     if let Some(attr) = attrs.iter().find(|&a| (*a).path.is_ident("wrapDepth")) {
         match attr
             .parse_args::<LitInt>()
