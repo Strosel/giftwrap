@@ -1,11 +1,10 @@
 use {
-    crate::{get_field, subtypes_list, GetFieldError},
-    helpers::get_wrap_depth,
+    crate::{get_field, GetFieldError},
+    helpers::{generate_inner_conversions, get_wrap_depth, subtypes_list},
     proc_macro::TokenStream,
     quote::{quote, quote_spanned},
     std::collections::HashSet,
-    syn,
-    syn::{spanned::Spanned, GenericParam, LitInt, Type},
+    syn::{self, spanned::Spanned, GenericParam, Type},
 };
 
 #[macro_use]
@@ -61,24 +60,7 @@ pub(crate) fn derive_wrap_struct(
             }
 
             for (i, ty) in types.iter().enumerate() {
-                let mut froms = quote! {f};
-                if i != 0 {
-                    froms = types[..i]
-                        .iter()
-                        .rev()
-                        .filter_map(|s_ty| {
-                            if let Type::Path(p) = s_ty {
-                                Some(p.path.segments[0].ident.clone())
-                            } else {
-                                None
-                            }
-                        })
-                        .fold(froms, |froms, gen| {
-                            quote! {
-                                #gen::<_>::from(#froms)
-                            }
-                        })
-                }
+                let froms = generate_inner_conversions(&types[..i]);
                 let from_ty = match &field.ident {
                     Some(ident) => quote! {
                         Self{ #ident: #froms }
@@ -107,7 +89,7 @@ pub(crate) fn derive_wrap_enum(
     data: &syn::DataEnum,
     generics: syn::Generics,
 ) -> TokenStream {
-    let mut wraps: HashSet<syn::Type> = HashSet::new();
+    let mut wraps: HashSet<Type> = HashSet::new();
     let mut stream = TokenStream::new();
 
     let mut generic_wrap = false;
@@ -166,24 +148,7 @@ pub(crate) fn derive_wrap_enum(
 
                     for (i, ty) in types.iter().enumerate() {
                         if wraps.insert(ty.clone()) {
-                            let mut froms = quote! {f};
-                            if i != 0 {
-                                froms = types[..i]
-                                    .iter()
-                                    .rev()
-                                    .filter_map(|s_ty| {
-                                        if let Type::Path(p) = s_ty {
-                                            Some(p.path.segments[0].ident.clone())
-                                        } else {
-                                            None
-                                        }
-                                    })
-                                    .fold(froms, |froms, gen| {
-                                        quote! {
-                                            #gen::<_>::from(#froms)
-                                        }
-                                    })
-                            }
+                            let froms = generate_inner_conversions(&types[..i]);
 
                             let varname = &var.ident;
                             let from_ty = match &field.ident {

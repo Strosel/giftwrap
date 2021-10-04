@@ -2,7 +2,7 @@ use giftwrap::*;
 use std::sync::{Arc, Mutex};
 
 #[derive(Debug, Wrap, Unwrap)]
-pub struct MyStruct<'a, T>(Option<&'a T>);
+pub struct MyStruct<'a, T>(#[wrapDepth(2)] Option<&'a T>);
 
 #[derive(Debug, Wrap, Unwrap)]
 pub struct MyNamedStruct {
@@ -14,6 +14,7 @@ pub struct Depth(#[wrapDepth(0)] Arc<Mutex<i32>>);
 
 fn main() {
     println!("{:?}", MyStruct::<i64>::from(Some(&12)));
+    println!("{:?}", MyStruct::<i64>::from(&13));
     println!(
         "{:?}",
         Option::<&'_ i64>::from(MyStruct::<'_, i64>(Some(&12)))
