@@ -1,6 +1,6 @@
 [package]
 name = "giftwrap"
-version = "0.3.0"
+version = "0.3.1"
 authors = ["axel paulander <axel.paulander@gmail.com>"]
 edition = "2018"
 description = "Wrap and unwrap your types the stylish way"
