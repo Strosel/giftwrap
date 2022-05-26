@@ -17,13 +17,16 @@ mod unwrap;
 /// Any enum variant annotated with `#[noWrap]` will be ignored.
 ///
 /// # Example
-/// ```
+/// ```ignore
+/// use std::sync::{Arc, Mutex};
+/// use giftwrap::Wrap;
+///
 /// #[derive(Wrap)]
 /// enum SomeEnum {
 ///     Number(i64),
 ///     Text(String),
 ///     #[wrapDepth(0)]
-///     DeepVariant(Arc<Mutex<bool>>)
+///     DeepVariant(Arc<Mutex<bool>>),
 ///     #[noWrap]
 ///     Real(f64),
 /// }
@@ -76,7 +79,10 @@ pub fn derive_wrap(input: TokenStream) -> TokenStream {
 /// Any enum variant annotated with `#[noUnwrap]` will be ignored.
 ///
 /// # Example
-/// ```
+/// ```ignore
+/// use std::convert::TryFrom;
+/// use giftwrap::Unwrap;
+///
 /// #[derive(Unwrap)]
 /// enum SomeEnum {
 ///     Number(i64),
@@ -89,22 +95,24 @@ pub fn derive_wrap(input: TokenStream) -> TokenStream {
 /// impl TryFrom<SomeEnum> for i64 {
 ///     type Error = &'static str;
 ///
-///     fn from(f: SomeEnum) -> Self {
+///     fn try_from(f: SomeEnum) -> Self {
 ///         match f {
 ///             SomeEnum::Number(v) => v,
 ///             SomeEnum::Text(_) => "Cannot convert SomeEnum::Text into i64",
 ///             //...
+///         }
 ///     }
 /// }
 ///
 /// impl TryFrom<SomeEnum> for String {
 ///     type Error = &'static str;
 ///
-///     fn from(f: SomeEnum) -> Self {
+///     fn try_from(f: SomeEnum) -> Self {
 ///         match f {
 ///             SomeEnum::Text(v) => v,
 ///             SomeEnum::Number(_) => "Cannot convert SomeEnum::Number into String",
 ///             //...
+///         }
 ///     }
 /// }
 /// ```
