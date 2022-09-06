@@ -1,8 +1,8 @@
 [package]
 name = "giftwrap"
-version = "0.3.1"
+version = "0.3.2"
 authors = ["axel paulander <axel.paulander@gmail.com>"]
-edition = "2018"
+edition = "2021"
 description = "Wrap and unwrap your types the stylish way"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/strosel/giftwrap"

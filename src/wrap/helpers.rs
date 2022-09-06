@@ -35,20 +35,22 @@ impl From<GetFieldError> for Error {
 }
 
 pub(super) fn get_wrap_depth(attrs: &[Attribute]) -> Result<u32, Error> {
-    if let Some(attr) = attrs.iter().find(|&a| (*a).path.is_ident("wrapDepth")) {
-        match attr
-            .parse_args::<LitInt>()
-            .and_then(|l| l.base10_parse::<u32>())
-        {
-            Ok(v) => Ok(v),
-            Err(e) => Err(Error::Special(
-                e.span(),
-                "wrapDepth must be an unsigned integer",
-            )),
-        }
-    } else {
-        Ok(1)
-    }
+    attrs
+        .iter()
+        .find(|&a| (*a).path.is_ident("wrapDepth"))
+        .map(|attr| {
+            match attr
+                .parse_args::<LitInt>()
+                .and_then(|l| l.base10_parse::<u32>())
+            {
+                Ok(v) => Ok(v),
+                Err(e) => Err(Error::Special(
+                    e.span(),
+                    "wrapDepth must be an unsigned integer",
+                )),
+            }
+        })
+        .unwrap_or(Ok(1))
 }
 
 pub(super) fn generate_inner_conversions(types: &[Type]) -> proc_macro2::TokenStream {
@@ -81,18 +83,13 @@ pub(super) fn subtypes_list(top: &syn::Type, depth: Option<u32>) -> Vec<syn::Typ
         match current {
             Type::Path(path) => {
                 if let PathArguments::AngleBracketed(brac) = &path.path.segments[0].arguments {
-                    if let Some(next_ty) = brac
-                        .args
-                        .iter()
-                        .filter_map(|v| {
-                            if let GenericArgument::Type(ty) = v {
-                                Some(ty)
-                            } else {
-                                None
-                            }
-                        })
-                        .next()
-                    {
+                    if let Some(next_ty) = brac.args.iter().find_map(|v| {
+                        if let GenericArgument::Type(ty) = v {
+                            Some(ty)
+                        } else {
+                            None
+                        }
+                    }) {
                         current = next_ty
                     } else {
                         break;
