@@ -1,23 +1,37 @@
 use {
     crate::{get_field, GetFieldError},
     harled::FromDeriveInput,
-    proc_macro2::TokenStream,
-    quote::{quote, quote_spanned},
+    proc_macro2::{Span, TokenStream},
+    quote::quote,
     std::collections::{HashMap, HashSet},
-    syn::{punctuated::Punctuated, spanned::Spanned, token},
+    syn::{punctuated::Punctuated, token},
 };
 
-macro_rules! cannot_unwrap {
-    ($span:expr => for $name:expr) => {
-        quote_spanned! {
-            $span => compile_error!(concat!("Unwrap cannot be derived for ", $name));
+pub(crate) enum Error {
+    For(Span, &'static str),
+    Only(Span, &'static str),
+}
+
+impl From<Error> for syn::Error {
+    fn from(e: Error) -> Self {
+        match e {
+            Error::For(span, msg) => {
+                syn::Error::new(span, format!("Unwrap cannot be derived for {msg}"))
+            }
+            Error::Only(span, msg) => {
+                syn::Error::new(span, format!("Unwrap can only be derived for {msg}"))
+            }
         }
-    };
-    ($span:expr => only $name:expr) => {
-        quote_spanned! {
-            $span => compile_error!(concat!("Unwrap can only be derived for ", $name));
+    }
+}
+
+impl From<GetFieldError> for Error {
+    fn from(e: GetFieldError) -> Self {
+        match e {
+            GetFieldError::Unit(span) => Error::For(span, "Unit variant"),
+            GetFieldError::NotSingle(span) => Error::Only(span, "variant with 1 field"),
         }
-    };
+    }
 }
 
 #[derive(FromDeriveInput, Debug)]
@@ -28,9 +42,14 @@ pub(crate) enum Derive {
 
 impl Derive {
     pub(crate) fn derive(self) -> TokenStream {
-        match self {
+        let res = match self {
             Self::Struct(s) => s.derive(),
             Self::Enum(e) => e.derive(),
+        };
+
+        match res {
+            Ok(derive) => derive,
+            Err(e) => syn::Error::from(e).to_compile_error(),
         }
     }
 }
@@ -44,7 +63,7 @@ pub(crate) struct Struct {
 }
 
 impl Struct {
-    fn derive(self) -> TokenStream {
+    fn derive(self) -> Result<TokenStream, Error> {
         let Self {
             ident,
             generics,
@@ -56,32 +75,32 @@ impl Struct {
                 syn::Fields::Named(f) => (&f.named, f.brace_token.span),
                 syn::Fields::Unnamed(f) => (&f.unnamed, f.paren_token.span),
                 syn::Fields::Unit => {
-                    return cannot_unwrap!(ident.span() => for "Unit struct");
+                    return Err(Error::For(ident.span(), "Unit struct"));
                 }
             };
 
         if fields.len() != 1 {
-            cannot_unwrap!(err_span => only "struct with 1 field")
-        } else {
-            let field: &syn::Field = fields.first().unwrap();
-            let ty: &syn::Type = &field.ty;
-            let from_self = match &field.ident {
-                Some(ident) => quote! {
-                    f.#ident
-                },
-                None => quote! {
-                    f.0
-                },
-            };
-            let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
-            quote! {
-                impl #impl_generics std::convert::From<#ident #ty_generics> for #ty #where_clause {
-                    fn from(f: #ident #ty_generics) -> Self {
-                        #from_self
-                    }
+            return Err(Error::Only(err_span, "struct with 1 field"));
+        }
+
+        let field: &syn::Field = fields.first().unwrap();
+        let ty: &syn::Type = &field.ty;
+        let from_self = match &field.ident {
+            Some(ident) => quote! {
+                f.#ident
+            },
+            None => quote! {
+                f.0
+            },
+        };
+        let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
+        Ok(quote! {
+            impl #impl_generics std::convert::From<#ident #ty_generics> for #ty #where_clause {
+                fn from(f: #ident #ty_generics) -> Self {
+                    #from_self
                 }
             }
-        }
+        })
     }
 }
 
@@ -99,7 +118,7 @@ struct Variant<'a> {
 }
 
 impl Enum {
-    fn derive(self) -> TokenStream {
+    fn derive(self) -> Result<TokenStream, Error> {
         let Self {
             ident: name,
             generics,
@@ -121,27 +140,20 @@ impl Enum {
             }
 
             if !no_unwrap {
-                match get_field(&var.fields) {
-                    Err(GetFieldError::Unit) => {
-                        return cannot_unwrap!(var.span() => for "Unit variant");
+                let field = get_field(&var.fields)?;
+
+                let ty: &syn::Type = &field.ty;
+                match wraps.get_mut(ty) {
+                    Some(v) => {
+                        v.push(Variant { var, field });
                     }
-                    Err(GetFieldError::NotSingle(span)) => {
-                        return cannot_unwrap!(span => only "variant with 1 field");
-                    }
-                    Ok(field) => {
-                        let ty: &syn::Type = &field.ty;
-                        match wraps.get_mut(ty) {
-                            Some(v) => {
-                                v.push(Variant { var, field });
-                            }
-                            None => {
-                                wraps.insert(ty, vec![Variant { var, field }]);
-                            }
-                        }
+                    None => {
+                        wraps.insert(ty, vec![Variant { var, field }]);
                     }
                 }
             }
         }
+
         for (ty, vars) in wraps.iter() {
             let mut match_arms = Vec::new();
             for var in vars.iter() {
@@ -155,6 +167,7 @@ impl Enum {
                     },
                 })
             }
+
             let err_arms: Vec<_> = all_variants.difference(&vars.iter().map(|var| var.var).collect()).map(|var| {
             let ident = &var.ident;
             match var.fields {
@@ -179,6 +192,6 @@ impl Enum {
             }
         );
         }
-        stream
+        Ok(stream)
     }
 }

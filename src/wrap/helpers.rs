@@ -1,36 +1,50 @@
 use {
-    quote::{quote, quote_spanned},
+    crate::GetFieldError,
+    proc_macro2::Span,
+    quote::quote,
     syn::{self, Attribute, GenericArgument, LitInt, PathArguments, Type},
 };
 
-macro_rules! cannot_wrap {
-    ($span:expr => for $name:expr) => {
-        quote_spanned! {
-            $span => compile_error!(concat!("Wrap cannot be derived for ", $name));
-        }
-    };
-    ($span:expr => only $name:expr) => {
-        quote_spanned! {
-            $span => compile_error!(concat!("Wrap can only be derived for ", $name));
-        }
-    };
-    ($span:expr => $msg:expr) => {
-        quote_spanned! {
-            $span => compile_error!($msg);
-        }
-    };
+pub(crate) enum Error {
+    For(Span, &'static str),
+    Only(Span, &'static str),
+    Special(Span, &'static str),
 }
 
-pub(super) fn get_wrap_depth(attrs: &[Attribute]) -> Result<u32, proc_macro2::TokenStream> {
+impl From<Error> for syn::Error {
+    fn from(e: Error) -> Self {
+        match e {
+            Error::For(span, msg) => {
+                syn::Error::new(span, format!("Wrap cannot be derived for {msg}"))
+            }
+            Error::Only(span, msg) => {
+                syn::Error::new(span, format!("Wrap can only be derived for {msg}"))
+            }
+            Error::Special(span, msg) => syn::Error::new(span, msg),
+        }
+    }
+}
+
+impl From<GetFieldError> for Error {
+    fn from(e: GetFieldError) -> Self {
+        match e {
+            GetFieldError::Unit(span) => Error::For(span, "Unit variant"),
+            GetFieldError::NotSingle(span) => Error::Only(span, "variant with 1 field"),
+        }
+    }
+}
+
+pub(super) fn get_wrap_depth(attrs: &[Attribute]) -> Result<u32, Error> {
     if let Some(attr) = attrs.iter().find(|&a| (*a).path.is_ident("wrapDepth")) {
         match attr
             .parse_args::<LitInt>()
             .and_then(|l| l.base10_parse::<u32>())
         {
             Ok(v) => Ok(v),
-            Err(e) => Err(cannot_wrap! {
-                e.span() => "wrapDepth must be an unsigned integer"
-            }),
+            Err(e) => Err(Error::Special(
+                e.span(),
+                "wrapDepth must be an unsigned integer",
+            )),
         }
     } else {
         Ok(1)

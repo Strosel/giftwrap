@@ -1,15 +1,15 @@
 use {
-    crate::{get_field, GetFieldError},
+    crate::get_field,
     harled::FromDeriveInput,
     helpers::{generate_inner_conversions, get_wrap_depth, subtypes_list},
     proc_macro2::TokenStream,
-    quote::{quote, quote_spanned},
+    quote::quote,
     std::collections::HashSet,
     syn::{self, spanned::Spanned, GenericParam, Type},
 };
 
-#[macro_use]
 mod helpers;
+pub(crate) use helpers::Error;
 
 #[derive(FromDeriveInput, Debug)]
 pub(crate) enum Derive {
@@ -19,9 +19,14 @@ pub(crate) enum Derive {
 
 impl Derive {
     pub(crate) fn derive(self) -> TokenStream {
-        match self {
+        let res = match self {
             Self::Struct(s) => s.derive(),
             Self::Enum(e) => e.derive(),
+        };
+
+        match res {
+            Ok(derive) => derive,
+            Err(e) => syn::Error::from(e).to_compile_error(),
         }
     }
 }
@@ -35,7 +40,7 @@ pub(crate) struct Struct {
 }
 
 impl Struct {
-    fn derive(self) -> TokenStream {
+    fn derive(self) -> Result<TokenStream, Error> {
         let Self {
             ident,
             generics,
@@ -52,61 +57,51 @@ impl Struct {
             })
             .collect();
 
-        match get_field(&fields) {
-            Err(GetFieldError::Unit) => cannot_wrap!(ident.span() => for "Unit struct"),
-            Err(GetFieldError::NotSingle(span)) => cannot_wrap!(span => only "struct with 1 field"),
-            Ok(field) => {
-                let wrap_depth = match get_wrap_depth(&field.attrs) {
-                    Ok(v) => v,
-                    Err(e) => return e,
-                };
+        let field = get_field(&fields)?;
+        let wrap_depth = get_wrap_depth(&field.attrs)?;
+        let types = subtypes_list(
+            &field.ty,
+            match wrap_depth {
+                0 => None,
+                n => Some(n),
+            },
+        );
 
-                let types = subtypes_list(
-                    &field.ty,
-                    match wrap_depth {
-                        0 => None,
-                        n => Some(n),
-                    },
-                );
+        if types.len() > 1
+            && types
+                .iter()
+                .filter_map(|ty| {
+                    if let Type::Path(p) = ty {
+                        Some(p.path.segments[0].ident.to_string())
+                    } else {
+                        None
+                    }
+                })
+                .any(|ident| generic_idents.contains(&ident))
+        {
+            return Err(Error::Special(fields.span(), "Generic type cannot be wrapped without causing conflicting implementations\n\tConsider using #[noWrap] or #[wrapDepth] here"));
+        }
 
-                if types.len() > 1
-                    && types
-                        .iter()
-                        .filter_map(|ty| {
-                            if let Type::Path(p) = ty {
-                                Some(p.path.segments[0].ident.to_string())
-                            } else {
-                                None
-                            }
-                        })
-                        .any(|ident| generic_idents.contains(&ident))
-                {
-                    return cannot_wrap!(fields.span() => "Generic type cannot be wrapped without causing conflicting implementations\n\tConsider using #[noWrap] or #[wrapDepth] here");
-                }
-
-                for (i, ty) in types.iter().enumerate() {
-                    let froms = generate_inner_conversions(&types[..i]);
-                    let from_ty = match &field.ident {
-                        Some(ident) => quote! {
-                            Self{ #ident: #froms }
-                        },
-                        None => quote! {
-                            Self(#froms)
-                        },
-                    };
-                    let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
-                    stream.extend::<TokenStream>( quote! {
+        for (i, ty) in types.iter().enumerate() {
+            let froms = generate_inner_conversions(&types[..i]);
+            let from_ty = match &field.ident {
+                Some(ident) => quote! {
+                    Self{ #ident: #froms }
+                },
+                None => quote! {
+                    Self(#froms)
+                },
+            };
+            let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
+            stream.extend::<TokenStream>(quote! {
                 impl #impl_generics std::convert::From<#ty> for #ident #ty_generics #where_clause {
                     fn from(f: #ty) -> Self {
                         #from_ty
                     }
                 }
-            }
-            );
-                }
-                stream
-            }
+            });
         }
+        Ok(stream)
     }
 }
 
@@ -119,7 +114,7 @@ pub(crate) struct Enum {
 }
 
 impl Enum {
-    fn derive(self) -> TokenStream {
+    fn derive(self) -> Result<TokenStream, Error> {
         let Self {
             ident,
             generics,
@@ -141,11 +136,7 @@ impl Enum {
 
         for var in variants.iter() {
             let mut no_wrap = false;
-            let wrap_depth = match get_wrap_depth(&var.attrs) {
-                Ok(v) => v,
-                Err(e) => return e,
-            };
-
+            let wrap_depth = get_wrap_depth(&var.attrs)?;
             for attr in var.attrs.iter() {
                 if attr.path.is_ident("noWrap") {
                     no_wrap = true;
@@ -153,53 +144,46 @@ impl Enum {
             }
 
             if !no_wrap {
-                match get_field(&var.fields) {
-                    Err(GetFieldError::Unit) => {
-                        return cannot_wrap!(var.span() => for "Unit variant");
-                    }
-                    Err(GetFieldError::NotSingle(span)) => {
-                        return cannot_wrap!(span => only "variant with 1 field");
-                    }
-                    Ok(field) => {
-                        let types = subtypes_list(
-                            &field.ty,
-                            match wrap_depth {
-                                0 => None,
-                                n => Some(n),
-                            },
-                        );
+                let field = get_field(&var.fields)?;
 
-                        generic_wrap |= types
-                            .iter()
-                            .filter_map(|ty| {
-                                if let Type::Path(p) = ty {
-                                    Some(p.path.segments[0].ident.to_string())
-                                } else {
-                                    None
-                                }
-                            })
-                            .any(|ident| generic_idents.contains(&ident));
-                        if generic_wrap && !wraps.is_empty() {
-                            return cannot_wrap!(var.fields.span() => "Generic type cannot be wrapped without causing conflicting implementations\n\tConsider using #[noWrap] or #[wrapDepth] here");
+                let types = subtypes_list(
+                    &field.ty,
+                    match wrap_depth {
+                        0 => None,
+                        n => Some(n),
+                    },
+                );
+
+                generic_wrap |= types
+                    .iter()
+                    .filter_map(|ty| {
+                        if let Type::Path(p) = ty {
+                            Some(p.path.segments[0].ident.to_string())
+                        } else {
+                            None
                         }
+                    })
+                    .any(|ident| generic_idents.contains(&ident));
+                if generic_wrap && !wraps.is_empty() {
+                    return Err(Error::Special(var.fields.span() , "Generic type cannot be wrapped without causing conflicting implementations\n\tConsider using #[noWrap] or #[wrapDepth] here"));
+                }
 
-                        for (i, ty) in types.iter().enumerate() {
-                            if wraps.insert(ty.clone()) {
-                                let froms = generate_inner_conversions(&types[..i]);
+                for (i, ty) in types.iter().enumerate() {
+                    if wraps.insert(ty.clone()) {
+                        let froms = generate_inner_conversions(&types[..i]);
 
-                                let varname = &var.ident;
-                                let from_ty = match &field.ident {
-                                    Some(ident) => quote! {
-                                        Self::#varname{ #ident: #froms }
-                                    },
-                                    None => quote! {
-                                        Self::#varname(#froms)
-                                    },
-                                };
-                                let (impl_generics, ty_generics, where_clause) =
-                                    generics.split_for_impl();
+                        let varname = &var.ident;
+                        let from_ty = match &field.ident {
+                            Some(ident) => quote! {
+                                Self::#varname{ #ident: #froms }
+                            },
+                            None => quote! {
+                                Self::#varname(#froms)
+                            },
+                        };
+                        let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
 
-                                stream.extend::<TokenStream>(
+                        stream.extend::<TokenStream>(
                             quote! {
                                 impl #impl_generics std::convert::From<#ty> for #ident #ty_generics #where_clause {
                                     fn from(f: #ty) -> Self {
@@ -208,15 +192,13 @@ impl Enum {
                                 }
                             }
                         );
-                            } else {
-                                return cannot_wrap!(var.span() => "Cannot derive Wrap for two variants with the same inner type\n\tConsider using #[noWrap] or #[wrapDepth] here");
-                            }
-                        }
+                    } else {
+                        return Err(Error::Special(var.span() , "Cannot derive Wrap for two variants with the same inner type\n\tConsider using #[noWrap] or #[wrapDepth] here"));
                     }
                 }
             }
         }
 
-        stream
+        Ok(stream)
     }
 }

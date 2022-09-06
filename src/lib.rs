@@ -1,7 +1,6 @@
 extern crate proc_macro;
 use harled::{Error, Kind};
 use proc_macro::TokenStream;
-use quote::quote_spanned;
 
 #[macro_use]
 mod wrap;
@@ -65,11 +64,13 @@ mod unwrap;
 #[proc_macro_derive(Wrap, attributes(noWrap, wrapDepth))]
 pub fn derive_wrap(input: TokenStream) -> TokenStream {
     let wrap: Result<wrap::Derive, _> = harled::parse(input);
-    match wrap {
-        Ok(wrap) => wrap.derive().into(),
-        Err(Error::Unsupported(Kind::Union, span)) => cannot_wrap!(span => for "Union").into(),
-        Err(Error::Syn(syn)) => syn.to_compile_error().into(),
+    match wrap.map_err(|e| match e {
+        Error::Unsupported(Kind::Union, span) => wrap::Error::For(span, "Union").into(),
+        Error::Syn(syn) => syn,
         _ => unreachable!(),
+    }) {
+        Ok(wrap) => wrap.derive().into(),
+        Err(syn) => syn.to_compile_error().into(),
     }
 }
 
@@ -118,20 +119,23 @@ pub fn derive_wrap(input: TokenStream) -> TokenStream {
 #[proc_macro_derive(Unwrap, attributes(noUnwrap))]
 pub fn derive_unwrap(input: TokenStream) -> TokenStream {
     let unwrap: Result<unwrap::Derive, _> = harled::parse(input);
-    match unwrap {
-        Ok(unwrap) => unwrap.derive().into(),
-        Err(Error::Unsupported(Kind::Union, span)) => cannot_unwrap!(span => for "Union").into(),
-        Err(Error::Syn(syn)) => syn.to_compile_error().into(),
+    match unwrap.map_err(|e| match e {
+        Error::Unsupported(Kind::Union, span) => unwrap::Error::For(span, "Union").into(),
+        Error::Syn(syn) => syn,
         _ => unreachable!(),
+    }) {
+        Ok(unwrap) => unwrap.derive().into(),
+        Err(syn) => syn.to_compile_error().into(),
     }
 }
 
 pub(crate) enum GetFieldError {
-    Unit,
+    Unit(proc_macro2::Span),
     NotSingle(proc_macro2::Span),
 }
 
 pub(crate) fn get_field(fields: &syn::Fields) -> Result<&syn::Field, GetFieldError> {
+    use syn::spanned::Spanned;
     match fields {
         syn::Fields::Named(f) => {
             if f.named.len() != 1 {
@@ -147,6 +151,6 @@ pub(crate) fn get_field(fields: &syn::Fields) -> Result<&syn::Field, GetFieldErr
                 Ok(f.unnamed.first().unwrap())
             }
         }
-        syn::Fields::Unit => Err(GetFieldError::Unit),
+        syn::Fields::Unit => Err(GetFieldError::Unit(fields.span())),
     }
 }
