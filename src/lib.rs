@@ -66,7 +66,7 @@ mod unwrap;
 pub fn derive_wrap(input: TokenStream) -> TokenStream {
     let wrap: Result<wrap::Derive, _> = harled::parse(input);
     match wrap {
-        Ok(wrap) => wrap.derive(),
+        Ok(wrap) => wrap.derive().into(),
         Err(Error::Unsupported(Kind::Union, span)) => cannot_wrap!(span => for "Union").into(),
         Err(Error::Syn(syn)) => syn.to_compile_error().into(),
         _ => unreachable!(),
@@ -119,7 +119,7 @@ pub fn derive_wrap(input: TokenStream) -> TokenStream {
 pub fn derive_unwrap(input: TokenStream) -> TokenStream {
     let unwrap: Result<unwrap::Derive, _> = harled::parse(input);
     match unwrap {
-        Ok(unwrap) => unwrap.derive(),
+        Ok(unwrap) => unwrap.derive().into(),
         Err(Error::Unsupported(Kind::Union, span)) => cannot_unwrap!(span => for "Union").into(),
         Err(Error::Syn(syn)) => syn.to_compile_error().into(),
         _ => unreachable!(),

@@ -2,8 +2,7 @@ use {
     crate::{get_field, GetFieldError},
     harled::FromDeriveInput,
     helpers::{generate_inner_conversions, get_wrap_depth, subtypes_list},
-    //TODO use proc_macro2 for fewer .into()
-    proc_macro::TokenStream,
+    proc_macro2::TokenStream,
     quote::{quote, quote_spanned},
     std::collections::HashSet,
     syn::{self, spanned::Spanned, GenericParam, Type},
@@ -54,10 +53,8 @@ impl Struct {
             .collect();
 
         match get_field(&fields) {
-            Err(GetFieldError::Unit) => cannot_wrap!(ident.span() => for "Unit struct").into(),
-            Err(GetFieldError::NotSingle(span)) => {
-                cannot_wrap!(span => only "struct with 1 field").into()
-            }
+            Err(GetFieldError::Unit) => cannot_wrap!(ident.span() => for "Unit struct"),
+            Err(GetFieldError::NotSingle(span)) => cannot_wrap!(span => only "struct with 1 field"),
             Ok(field) => {
                 let wrap_depth = match get_wrap_depth(&field.attrs) {
                     Ok(v) => v,
@@ -84,7 +81,7 @@ impl Struct {
                         })
                         .any(|ident| generic_idents.contains(&ident))
                 {
-                    return cannot_wrap!(fields.span() => "Generic type cannot be wrapped without causing conflicting implementations\n\tConsider using #[noWrap] or #[wrapDepth] here").into();
+                    return cannot_wrap!(fields.span() => "Generic type cannot be wrapped without causing conflicting implementations\n\tConsider using #[noWrap] or #[wrapDepth] here");
                 }
 
                 for (i, ty) in types.iter().enumerate() {
@@ -105,7 +102,7 @@ impl Struct {
                     }
                 }
             }
-            .into());
+            );
                 }
                 stream
             }
@@ -158,10 +155,10 @@ impl Enum {
             if !no_wrap {
                 match get_field(&var.fields) {
                     Err(GetFieldError::Unit) => {
-                        return cannot_wrap!(var.span() => for "Unit variant").into();
+                        return cannot_wrap!(var.span() => for "Unit variant");
                     }
                     Err(GetFieldError::NotSingle(span)) => {
-                        return cannot_wrap!(span => only "variant with 1 field").into();
+                        return cannot_wrap!(span => only "variant with 1 field");
                     }
                     Ok(field) => {
                         let types = subtypes_list(
@@ -183,7 +180,7 @@ impl Enum {
                             })
                             .any(|ident| generic_idents.contains(&ident));
                         if generic_wrap && !wraps.is_empty() {
-                            return cannot_wrap!(var.fields.span() => "Generic type cannot be wrapped without causing conflicting implementations\n\tConsider using #[noWrap] or #[wrapDepth] here").into();
+                            return cannot_wrap!(var.fields.span() => "Generic type cannot be wrapped without causing conflicting implementations\n\tConsider using #[noWrap] or #[wrapDepth] here");
                         }
 
                         for (i, ty) in types.iter().enumerate() {
@@ -210,10 +207,9 @@ impl Enum {
                                     }
                                 }
                             }
-                            .into(),
                         );
                             } else {
-                                return cannot_wrap!(var.span() => "Cannot derive Wrap for two variants with the same inner type\n\tConsider using #[noWrap] or #[wrapDepth] here").into();
+                                return cannot_wrap!(var.span() => "Cannot derive Wrap for two variants with the same inner type\n\tConsider using #[noWrap] or #[wrapDepth] here");
                             }
                         }
                     }

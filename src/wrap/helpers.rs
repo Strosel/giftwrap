@@ -21,7 +21,7 @@ macro_rules! cannot_wrap {
     };
 }
 
-pub(super) fn get_wrap_depth(attrs: &[Attribute]) -> Result<u32, proc_macro::TokenStream> {
+pub(super) fn get_wrap_depth(attrs: &[Attribute]) -> Result<u32, proc_macro2::TokenStream> {
     if let Some(attr) = attrs.iter().find(|&a| (*a).path.is_ident("wrapDepth")) {
         match attr
             .parse_args::<LitInt>()
@@ -30,8 +30,7 @@ pub(super) fn get_wrap_depth(attrs: &[Attribute]) -> Result<u32, proc_macro::Tok
             Ok(v) => Ok(v),
             Err(e) => Err(cannot_wrap! {
                 e.span() => "wrapDepth must be an unsigned integer"
-            }
-            .into()),
+            }),
         }
     } else {
         Ok(1)

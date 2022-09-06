@@ -1,7 +1,7 @@
 use {
     crate::{get_field, GetFieldError},
     harled::FromDeriveInput,
-    proc_macro::TokenStream,
+    proc_macro2::TokenStream,
     quote::{quote, quote_spanned},
     std::collections::{HashMap, HashSet},
     syn::{punctuated::Punctuated, spanned::Spanned, token},
@@ -56,12 +56,12 @@ impl Struct {
                 syn::Fields::Named(f) => (&f.named, f.brace_token.span),
                 syn::Fields::Unnamed(f) => (&f.unnamed, f.paren_token.span),
                 syn::Fields::Unit => {
-                    return cannot_unwrap!(ident.span() => for "Unit struct").into();
+                    return cannot_unwrap!(ident.span() => for "Unit struct");
                 }
             };
 
         if fields.len() != 1 {
-            cannot_unwrap!(err_span => only "struct with 1 field").into()
+            cannot_unwrap!(err_span => only "struct with 1 field")
         } else {
             let field: &syn::Field = fields.first().unwrap();
             let ty: &syn::Type = &field.ty;
@@ -74,14 +74,13 @@ impl Struct {
                 },
             };
             let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
-            (quote! {
+            quote! {
                 impl #impl_generics std::convert::From<#ident #ty_generics> for #ty #where_clause {
                     fn from(f: #ident #ty_generics) -> Self {
                         #from_self
                     }
                 }
-            })
-            .into()
+            }
         }
     }
 }
@@ -124,10 +123,10 @@ impl Enum {
             if !no_unwrap {
                 match get_field(&var.fields) {
                     Err(GetFieldError::Unit) => {
-                        return cannot_unwrap!(var.span() => for "Unit variant").into();
+                        return cannot_unwrap!(var.span() => for "Unit variant");
                     }
                     Err(GetFieldError::NotSingle(span)) => {
-                        return cannot_unwrap!(span => only "variant with 1 field").into();
+                        return cannot_unwrap!(span => only "variant with 1 field");
                     }
                     Ok(field) => {
                         let ty: &syn::Type = &field.ty;
@@ -178,7 +177,6 @@ impl Enum {
                     }
                 }
             }
-            .into(),
         );
         }
         stream
