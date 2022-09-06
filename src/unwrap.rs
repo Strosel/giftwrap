@@ -2,7 +2,7 @@ use {
     crate::{get_field, GetFieldError},
     harled::FromDeriveInput,
     proc_macro2::{Span, TokenStream},
-    quote::quote,
+    quote::{quote, ToTokens},
     std::collections::{HashMap, HashSet},
     syn::{punctuated::Punctuated, token},
 };
@@ -93,10 +93,10 @@ impl Struct {
                 f.0
             },
         };
-        let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
+        let (impl_gen, ty_gen, where_clause) = generics.split_for_impl();
         Ok(quote! {
-            impl #impl_generics std::convert::From<#ident #ty_generics> for #ty #where_clause {
-                fn from(f: #ident #ty_generics) -> Self {
+            impl #impl_gen std::convert::From<#ident #ty_gen> for #ty #where_clause {
+                fn from(f: #ident #ty_gen) -> Self {
                     #from_self
                 }
             }
@@ -109,12 +109,7 @@ impl Struct {
 pub(crate) struct Enum {
     ident: syn::Ident,
     generics: syn::Generics,
-    variants: Vec<syn::Variant>,
-}
-
-struct Variant<'a> {
-    var: &'a syn::Variant,
-    field: &'a syn::Field,
+    variants: HashSet<syn::Variant>,
 }
 
 impl Enum {
@@ -125,72 +120,78 @@ impl Enum {
             variants,
         } = self;
 
-        let mut wraps: HashMap<&syn::Type, Vec<Variant>> = HashMap::new();
-        let mut all_variants: HashSet<&syn::Variant> = HashSet::new();
+        let mut wraps: HashMap<&syn::Type, HashSet<syn::Variant>> = HashMap::new();
         let mut stream = TokenStream::new();
 
-        for var in variants.iter() {
-            all_variants.insert(var);
-            let mut no_unwrap = false;
-
-            for attr in var.attrs.iter() {
-                if attr.path.is_ident("noUnwrap") {
-                    no_unwrap = true;
+        for var in variants
+            .iter()
+            .filter(|var| !var.attrs.iter().any(|attr| attr.path.is_ident("noUnwrap")))
+        {
+            let field = get_field(&var.fields)?;
+            let ty: &syn::Type = &field.ty;
+            match wraps.get_mut(ty) {
+                Some(hs) => {
+                    hs.insert(var.clone());
                 }
-            }
-
-            if !no_unwrap {
-                let field = get_field(&var.fields)?;
-
-                let ty: &syn::Type = &field.ty;
-                match wraps.get_mut(ty) {
-                    Some(v) => {
-                        v.push(Variant { var, field });
-                    }
-                    None => {
-                        wraps.insert(ty, vec![Variant { var, field }]);
-                    }
+                None => {
+                    let mut hs = HashSet::new();
+                    hs.insert(var.clone());
+                    wraps.insert(ty, hs);
                 }
             }
         }
 
         for (ty, vars) in wraps.iter() {
-            let mut match_arms = Vec::new();
-            for var in vars.iter() {
-                let varname = &var.var.ident;
-                match_arms.push(match &var.field.ident {
-                    Some(ident) => quote! {
-                        #name::#varname{ #ident } => Ok(#ident),
-                    },
-                    None => quote! {
-                        #name::#varname(v) => Ok(v),
-                    },
+            let match_arms: Vec<_> = vars
+                .iter()
+                .map(|var| {
+                    let varname = &var.ident;
+                    let field = get_field(&var.fields)?;
+                    let branch = match field.ident {
+                        Some(ref ident) => quote! {
+                            #name::#varname{ #ident } => Ok(#ident),
+                        },
+                        None => quote! {
+                            #name::#varname(v) => Ok(v),
+                        },
+                    };
+                    Ok(branch)
                 })
-            }
+                .collect::<Result<Vec<_>, GetFieldError>>()?;
 
-            let err_arms: Vec<_> = all_variants.difference(&vars.iter().map(|var| var.var).collect()).map(|var| {
-            let ident = &var.ident;
-            match var.fields {
-                syn::Fields::Named(_) => quote! {#name::#ident{..} => Err(concat!("Can't convert ", stringify!(#name), "::", stringify!(#ident), " into ", stringify!(#ty))),},
-                syn::Fields::Unnamed(_) => quote! {#name::#ident(..) => Err(concat!("Can't convert ", stringify!(#name), "::", stringify!(#ident), " into ", stringify!(#ty))),},
-                syn::Fields::Unit => quote! {#name::#ident => Err(concat!("Can't convert ", stringify!(#name), "::", stringify!(#ident), " into ", stringify!(#ty))),},
-            }
-        }).collect();
-            let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
-            stream.extend::<TokenStream>(
-            quote! {
-                impl #impl_generics  std::convert::TryFrom<#name #ty_generics> for #ty #where_clause {
+            let err_arms: Vec<_> = variants
+                .difference(vars)
+                .map(|var| {
+                    let ident = &var.ident;
+                    let pat = match var.fields {
+                        syn::Fields::Named(_) => quote! {#name::#ident{..}},
+                        syn::Fields::Unnamed(_) => quote! {#name::#ident(..)},
+                        syn::Fields::Unit => quote! {#name::#ident},
+                    };
+                    let err = format!(
+                        "Can't convert {}::{} into {}",
+                        name,
+                        ident,
+                        ty.to_token_stream(),
+                    );
+                    quote! {
+                        #pat => Err(#err),
+                    }
+                })
+                .collect();
+            let (impl_gen, ty_gen, where_clause) = generics.split_for_impl();
+            stream.extend::<TokenStream>(quote! {
+                impl #impl_gen  std::convert::TryFrom<#name #ty_gen> for #ty #where_clause {
                     type Error = &'static str;
 
-                    fn try_from(f: #name #ty_generics) -> std::result::Result<Self, Self::Error> {
+                    fn try_from(f: #name #ty_gen) -> std::result::Result<Self, Self::Error> {
                         match f {
                             #(#match_arms)*
                             #(#err_arms)*
                         }
                     }
                 }
-            }
-        );
+            });
         }
         Ok(stream)
     }
