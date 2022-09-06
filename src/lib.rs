@@ -1,4 +1,5 @@
 extern crate proc_macro;
+use harled::{Error, Kind};
 use proc_macro::TokenStream;
 use quote::quote_spanned;
 
@@ -63,13 +64,12 @@ mod unwrap;
 /// ```
 #[proc_macro_derive(Wrap, attributes(noWrap, wrapDepth))]
 pub fn derive_wrap(input: TokenStream) -> TokenStream {
-    let ast: syn::DeriveInput = syn::parse(input).unwrap();
-
-    let name = &ast.ident;
-    match &ast.data {
-        syn::Data::Struct(s) => wrap::derive_wrap_struct(name, s, ast.generics),
-        syn::Data::Enum(e) => wrap::derive_wrap_enum(name, e, ast.generics),
-        syn::Data::Union(u) => cannot_wrap!(u.union_token.span => for "Union").into(),
+    let wrap: Result<wrap::Derive, _> = harled::parse(input);
+    match wrap {
+        Ok(wrap) => wrap.derive(),
+        Err(Error::Unsupported(Kind::Union, span)) => cannot_wrap!(span => for "Union").into(),
+        Err(Error::Syn(syn)) => syn.to_compile_error().into(),
+        _ => unreachable!(),
     }
 }
 
@@ -117,13 +117,12 @@ pub fn derive_wrap(input: TokenStream) -> TokenStream {
 /// ```
 #[proc_macro_derive(Unwrap, attributes(noUnwrap))]
 pub fn derive_unwrap(input: TokenStream) -> TokenStream {
-    let ast: syn::DeriveInput = syn::parse(input).unwrap();
-
-    let name = &ast.ident;
-    match &ast.data {
-        syn::Data::Struct(s) => unwrap::derive_unwrap_struct(name, s, ast.generics),
-        syn::Data::Enum(e) => unwrap::derive_unwrap_enum(name, e, ast.generics),
-        syn::Data::Union(u) => cannot_unwrap!(u.union_token.span => for "Union").into(),
+    let unwrap: Result<unwrap::Derive, _> = harled::parse(input);
+    match unwrap {
+        Ok(unwrap) => unwrap.derive(),
+        Err(Error::Unsupported(Kind::Union, span)) => cannot_unwrap!(span => for "Union").into(),
+        Err(Error::Syn(syn)) => syn.to_compile_error().into(),
+        _ => unreachable!(),
     }
 }
 

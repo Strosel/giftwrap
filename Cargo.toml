@@ -15,6 +15,7 @@ proc-macro = true
 [dependencies]
 quote = "1.0.9"
 proc-macro2 = "1.0.26"
+harled = {path = "../harled"}
 
 [dependencies.syn]
 version = "1.0.70"
