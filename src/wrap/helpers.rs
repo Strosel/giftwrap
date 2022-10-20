@@ -2,7 +2,7 @@ use {
     crate::GetFieldError,
     proc_macro2::Span,
     quote::quote,
-    syn::{self, Attribute, GenericArgument, LitInt, PathArguments, Type},
+    syn::{self, GenericArgument, PathArguments, Type},
 };
 
 pub(crate) enum Error {
@@ -32,25 +32,6 @@ impl From<GetFieldError> for Error {
             GetFieldError::NotSingle(span) => Error::Only(span, "variant with 1 field"),
         }
     }
-}
-
-pub(super) fn get_wrap_depth(attrs: &[Attribute]) -> Result<u32, Error> {
-    attrs
-        .iter()
-        .find(|&a| (*a).path.is_ident("wrapDepth"))
-        .map(|attr| {
-            match attr
-                .parse_args::<LitInt>()
-                .and_then(|l| l.base10_parse::<u32>())
-            {
-                Ok(v) => Ok(v),
-                Err(e) => Err(Error::Special(
-                    e.span(),
-                    "wrapDepth must be an unsigned integer",
-                )),
-            }
-        })
-        .unwrap_or(Ok(1))
 }
 
 pub(super) fn generate_inner_conversions(types: &[Type]) -> proc_macro2::TokenStream {

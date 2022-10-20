@@ -2,8 +2,8 @@
 Wrap and unwrap your types the stylish way with derive macros for From/TryFrom in both directions
 
 ## How does it work?
-`Giftwrap` exposes two derive macros, `Wrap` and `Unwrap` that derive `impl From<inner_type> for your_type` and `impl From<your_type> for inner_type` (or `TryFrom<your_type>` in the case of enums) respectively.
-It works for any struct or enum variant that holds only a single type, and don't worry variants with multiple types or with types you want to convert yourself can be easily ignored with `#[noWrap]` and `#[noUnwrap]`.
+`giftwrap` exposes two derive macros, `Wrap` and `Unwrap` that derive `impl From<inner_type> for your_type` and `impl From<your_type> for inner_type` (or `TryFrom<your_type>` in the case of enums) respectively.
+It works for any struct or enum variant that holds only a single type, and don't worry variants with multiple types or with types you want to convert yourself can be easily ignored by setting `noWrap` and `noUnwrap` in the `#[giftwrap()]` attribute.
 
 ## Examples
 Consider the following `error.rs`
@@ -47,7 +47,7 @@ impl From<Box<qrcodegen::DataTooLong>> for Error {
 ```
 This might seem simple enough but adding new error types is not as easy as it could be.
 
-However with `Giftwrap` it's as simple as it gets:
+However with `giftwrap` it's as simple as it gets:
 ```rust
 pub type Result<T> = std::result::Result<T, Error>;
 
@@ -57,11 +57,11 @@ pub enum Error {
     Io(std::io::Error),
     RppalGpio(rppal::gpio::Error),
     Reqwest(reqwest::Error),
-    #[wrapDepth(0)]
+    #[giftwrap(wrapDepth = 0)]
     Qr(<qrcodegen::DataTooLong>),
-    #[noWrap]
+    #[giftwrap(noWrap = true)]
     Other(String),
 }
 ```
-Now you could add a new error variant wrapping a type from any library and `Giftwrap` handles the rest for you
+Now you could add a new error variant wrapping a type from any library and `giftwrap` handles the rest for you
 

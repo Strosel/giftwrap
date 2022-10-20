@@ -1,5 +1,8 @@
 use {
-    crate::{get_field, GetFieldError},
+    crate::{
+        attrib::{StructAttributes, VariantAttributes},
+        get_field, GetFieldError,
+    },
     harled::FromDeriveInput,
     proc_macro2::{Span, TokenStream},
     quote::{quote, ToTokens},
@@ -10,6 +13,7 @@ use {
 pub(crate) enum Error {
     For(Span, &'static str),
     Only(Span, &'static str),
+    Special(Span, &'static str),
 }
 
 impl From<Error> for syn::Error {
@@ -21,6 +25,7 @@ impl From<Error> for syn::Error {
             Error::Only(span, msg) => {
                 syn::Error::new(span, format!("Unwrap can only be derived for {msg}"))
             }
+            Error::Special(span, msg) => syn::Error::new(span, msg),
         }
     }
 }
@@ -55,7 +60,7 @@ impl Derive {
 }
 
 #[derive(FromDeriveInput, Debug)]
-#[Struct]
+#[harled(Struct)]
 pub(crate) struct Struct {
     ident: syn::Ident,
     generics: syn::Generics,
@@ -105,7 +110,7 @@ impl Struct {
 }
 
 #[derive(FromDeriveInput, Debug)]
-#[Enum]
+#[harled(Enum)]
 pub(crate) struct Enum {
     ident: syn::Ident,
     generics: syn::Generics,
@@ -123,10 +128,14 @@ impl Enum {
         let mut wraps: HashMap<&syn::Type, HashSet<syn::Variant>> = HashMap::new();
         let mut stream = TokenStream::new();
 
-        for var in variants
+        for res in variants
             .iter()
-            .filter(|var| !var.attrs.iter().any(|attr| attr.path.is_ident("noUnwrap")))
+            .filter_map(|var| match VariantAttributes::load(&var.attrs) {
+                Ok(attr) => (!attr.no_unwrap).then_some(Ok(var)),
+                Err((span, e)) => Some(Err(Error::Special(span, e))),
+            })
         {
+            let var = res?;
             let field = get_field(&var.fields)?;
             let ty: &syn::Type = &field.ty;
             match wraps.get_mut(ty) {
