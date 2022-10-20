@@ -2,18 +2,22 @@ extern crate proc_macro;
 use harled::{Error, Kind};
 use proc_macro::TokenStream;
 
+//TODO noWrap/wrapDepth -> giftwrap(noWrap/wrapDepth) in docs
+
 #[macro_use]
 mod wrap;
 #[macro_use]
 mod unwrap;
 
+pub(crate) mod attrib;
+
 /// Derve macro for `From<T>` where `T` is the inner type(s) of your struct or enum.
 ///
-/// Using `#[wrapDepth(n)]` `From` is derived for every type in the chain, which is useful for
+/// Using `#[giftwrap(wrapDepth = n)]` `From` is derived for every type in the chain, which is useful for
 /// types such as `Box<T>` and `Arc<Mutex<T>>`. Setting wrapDepth to 0 will derive for all inner
 /// types. Default depth is 1.
 ///
-/// Any enum variant annotated with `#[noWrap]` will be ignored.
+/// Any enum variant annotated with `#[giftwrap(noWrap = true)]` will be ignored.
 ///
 /// # Example
 /// ```ignore
@@ -24,9 +28,9 @@ mod unwrap;
 /// enum SomeEnum {
 ///     Number(i64),
 ///     Text(String),
-///     #[wrapDepth(0)]
+///     #[giftwrap(wrapDepth = 0)]
 ///     DeepVariant(Arc<Mutex<bool>>),
-///     #[noWrap]
+///     #[giftwrap(noWrap = true)]
 ///     Real(f64),
 /// }
 ///
@@ -61,7 +65,7 @@ mod unwrap;
 ///     }
 /// }
 /// ```
-#[proc_macro_derive(Wrap, attributes(noWrap, wrapDepth))]
+#[proc_macro_derive(Wrap, attributes(giftwrap))]
 pub fn derive_wrap(input: TokenStream) -> TokenStream {
     let wrap: Result<wrap::Derive, _> = harled::parse(input);
     match wrap.map_err(|e| match e {
@@ -76,7 +80,7 @@ pub fn derive_wrap(input: TokenStream) -> TokenStream {
 
 /// Derve macro for `impl From<S> for T` and `impl TryFrom<E> for T` for structs (`S`) and enums (`E`) where `T` is the inner type(s).
 ///
-/// Any enum variant annotated with `#[noUnwrap]` will be ignored.
+/// Any enum variant annotated with `#[giftwrap(noUnwrap = true)]` will be ignored.
 ///
 /// # Example
 /// ```ignore
@@ -87,7 +91,7 @@ pub fn derive_wrap(input: TokenStream) -> TokenStream {
 /// enum SomeEnum {
 ///     Number(i64),
 ///     Text(String),
-///     #[noUnwrap]
+///     #[giftwrap(noUnwrap = true)]
 ///     Real(f64),
 /// }
 ///
@@ -116,7 +120,7 @@ pub fn derive_wrap(input: TokenStream) -> TokenStream {
 ///     }
 /// }
 /// ```
-#[proc_macro_derive(Unwrap, attributes(noUnwrap))]
+#[proc_macro_derive(Unwrap, attributes(giftwrap))]
 pub fn derive_unwrap(input: TokenStream) -> TokenStream {
     let unwrap: Result<unwrap::Derive, _> = harled::parse(input);
     match unwrap.map_err(|e| match e {

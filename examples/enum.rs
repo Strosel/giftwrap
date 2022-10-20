@@ -4,11 +4,11 @@ use std::sync::{Arc, Mutex};
 
 #[derive(Wrap, Unwrap, Debug)]
 pub enum MyEnum {
-    #[noWrap]
+    #[giftwrap(noWrap = true)]
     UnwrappedNumber {
         n: i64,
     },
-    #[noUnwrap]
+    #[giftwrap(noUnwrap = true)]
     WrappedNumber {
         n: i64,
     },
@@ -21,12 +21,11 @@ pub struct Str<'a>(&'a str);
 #[derive(Wrap, Unwrap, Debug)]
 pub enum MyGenericEnum<'a, T> {
     Str(Str<'a>),
-    //#[wrapDepth(1)]
+    #[giftwrap(wrapDepth = 1)]
     Gen(Option<T>),
-    #[wrapDepth(0)]
+    #[giftwrap(wrapDepth = 0)]
     Dep(Arc<Mutex<i32>>),
-    #[noWrap]
-    #[noUnwrap]
+    #[giftwrap(noWrap = true, noUnwrap = true)]
     T(T),
 }
 

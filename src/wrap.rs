@@ -1,7 +1,10 @@
 use {
-    crate::get_field,
+    crate::{
+        attrib::{StructAttributes, VariantAttributes},
+        get_field,
+    },
     harled::FromDeriveInput,
-    helpers::{generate_inner_conversions, get_wrap_depth, subtypes_list},
+    helpers::{generate_inner_conversions, subtypes_list},
     proc_macro2::TokenStream,
     quote::quote,
     std::collections::HashSet,
@@ -32,7 +35,7 @@ impl Derive {
 }
 
 #[derive(FromDeriveInput, Debug)]
-#[Struct]
+#[harled(Struct)]
 pub(crate) struct Struct {
     ident: syn::Ident,
     generics: syn::Generics,
@@ -58,14 +61,9 @@ impl Struct {
             .collect();
 
         let field = get_field(&fields)?;
-        let wrap_depth = get_wrap_depth(&field.attrs)?;
-        let types = subtypes_list(
-            &field.ty,
-            match wrap_depth {
-                0 => None,
-                n => Some(n),
-            },
-        );
+        let attr =
+            StructAttributes::load(&field.attrs).map_err(|(span, e)| Error::Special(span, e))?;
+        let types = subtypes_list(&field.ty, attr.wrap_depth());
 
         if types.len() > 1
             && types
@@ -83,7 +81,7 @@ impl Struct {
                 fields.span(),
                 concat!(
                     "Generic type cannot be wrapped without causing conflicting implementations\n",
-                    "\tConsider using #[noWrap] or #[wrapDepth] here"
+                    "\tConsider using `noWrap` or `wrapDepth] here"
                 ),
             ));
         }
@@ -112,7 +110,7 @@ impl Struct {
 }
 
 #[derive(FromDeriveInput, Debug)]
-#[Enum]
+#[harled(Enum)]
 pub(crate) struct Enum {
     ident: syn::Ident,
     generics: syn::Generics,
@@ -139,21 +137,18 @@ impl Enum {
             })
             .collect();
 
-        for var in variants
+        for res in variants
             .iter()
-            .filter(|var| !var.attrs.iter().any(|attr| attr.path.is_ident("noWrap")))
+            .filter_map(|var| match VariantAttributes::load(&var.attrs) {
+                Ok(attr) => (!attr.no_wrap).then_some(Ok((var, attr))),
+                Err((span, e)) => Some(Err(Error::Special(span, e))),
+            })
         {
-            let wrap_depth = get_wrap_depth(&var.attrs)?;
+            let (var, attr) = res?;
 
             let field = get_field(&var.fields)?;
 
-            let types = subtypes_list(
-                &field.ty,
-                match wrap_depth {
-                    0 => None,
-                    n => Some(n),
-                },
-            );
+            let types = subtypes_list(&field.ty, attr.wrap_depth());
 
             let generic_wrap = types
                 .iter()
@@ -170,7 +165,7 @@ impl Enum {
                     var.fields.span(),
                     concat!(
                         "Wrapping a generic type will cause conflicting implementations\n",
-                        "\tConsider using #[noWrap] or #[wrapDepth] here"
+                        "\tConsider using `noWrap` or `wrapDepth` here"
                     ),
                 ));
             }
@@ -182,7 +177,7 @@ impl Enum {
                         var.span(),
                         concat!(
                             "Cannot derive Wrap for two variants with the same inner type\n",
-                            "\tConsider using #[noWrap] or #[wrapDepth] here"
+                            "\tConsider using `noWrap` or `wrapDepth` here"
                         ),
                     ));
                 }

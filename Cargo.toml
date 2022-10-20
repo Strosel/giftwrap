@@ -13,10 +13,17 @@ readme = "readme.md"
 proc-macro = true
 
 [dependencies]
-quote = "1.0.9"
-proc-macro2 = "1.0.26"
-harled = "0.2.0"
+quote = "1.0"
+proc-macro2 = "1.0"
+#harled = "0.3"
+harled = {path = "../harled"}
+toml = "0.5"
 
 [dependencies.syn]
-version = "1.0.70"
+version = "1.0"
 features = ["extra-traits", "parsing", "printing", "derive"]
+
+[dependencies.serde]
+version = "1.0"
+default-features = false
+features = ["derive"]
