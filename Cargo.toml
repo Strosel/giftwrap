@@ -27,3 +27,6 @@ features = ["extra-traits", "parsing", "printing", "derive"]
 version = "1.0"
 default-features = false
 features = ["derive"]
+
+[workspace.metadata.workspaces]
+no_individual_tags = true
